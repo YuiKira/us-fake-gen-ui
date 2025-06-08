@@ -5,9 +5,10 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Copy, RefreshCw, Settings, Check } from "lucide-react"
+import { Copy, RefreshCw, Settings, Check, Download } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import ConfigDialog from "@/components/config-dialog"
+import JsonDownloadDialog from "@/components/json-download-dialog"
 
 interface PersonData {
   fullName: string
@@ -298,6 +299,7 @@ export default function HomePage() {
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [schoolData, setSchoolData] = useState<SchoolData | null>(null)
   const [universityData, setUniversityData] = useState<UniversityData | null>(null)
+  const [jsonDialogOpen, setJsonDialogOpen] = useState(false)
 
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -834,6 +836,10 @@ export default function HomePage() {
                 </>
               )}
             </Button>
+            <Button variant="outline" onClick={() => setJsonDialogOpen(true)} disabled={!data}>
+              <Download className="mr-2 h-4 w-4" />
+              导出JSON
+            </Button>
 
             <Button variant="outline" onClick={() => setConfigOpen(true)}>
               <Settings className="mr-2 h-4 w-4" />
@@ -872,6 +878,14 @@ export default function HomePage() {
           universityState,
           universityCity,
         }}
+      />
+      <JsonDownloadDialog
+        open={jsonDialogOpen}
+        onOpenChange={setJsonDialogOpen}
+        data={data}
+        schoolData={schoolData}
+        universityData={universityData}
+        visibleFields={visibleFields}
       />
     </div>
   )
