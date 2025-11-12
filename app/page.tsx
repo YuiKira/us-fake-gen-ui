@@ -9,6 +9,8 @@ import { Copy, RefreshCw, Settings, Check, Download } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import ConfigDialog from "@/components/config-dialog"
 import JsonDownloadDialog from "@/components/json-download-dialog"
+import { generatePersonDataWithAddress } from "./utils/person-generator"
+import { faker } from "@faker-js/faker"
 
 interface PersonData {
   fullName: string
@@ -91,6 +93,7 @@ const DEFAULT_VISIBLE_FIELDS = [
   "street",
   "city",
   "state",
+  "stateFullName",
   "zipCode",
   "phone",
   "email",
@@ -300,6 +303,7 @@ export default function HomePage() {
   const [schoolData, setSchoolData] = useState<SchoolData | null>(null)
   const [universityData, setUniversityData] = useState<UniversityData | null>(null)
   const [jsonDialogOpen, setJsonDialogOpen] = useState(false)
+  const [isClient, setIsClient] = useState(false)
 
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -318,6 +322,11 @@ export default function HomePage() {
   const highCity = searchParams.get("highCity") || ""
   const universityState = searchParams.get("universityState") || ""
   const universityCity = searchParams.get("universityCity") || ""
+
+  // 标记客户端渲染，避免Hydration错误
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   // 如果没有fields参数，重定向到默认配置
   useEffect(() => {
@@ -360,31 +369,35 @@ export default function HomePage() {
       let currentSeed = newSeed || seed
 
       while (attempts < 10) {
-        // 最多尝试10次
-        const params = new URLSearchParams()
-        if (state) params.append("state", state)
-        if (city) params.append("city", city)
-        params.append("_refresh", currentSeed.toString())
+        try {
+          // 使用本地数据生成器
+          const localData = await generatePersonDataWithAddress({
+            state: state || undefined,
+            city: city || undefined,
+            gender: gender && gender !== 'random' ? gender : undefined,
+            minAge: minAge > 0 ? minAge : undefined,
+            maxAge: maxAge > 0 ? maxAge : undefined,
+            seed: currentSeed
+          })
 
-        const response = await fetch(`https://www.usaddrgen.com/api/generate.php?${params.toString()}`)
-        const apiData = await response.json()
-
-        if (apiData.success) {
-          result = apiData.data
-
-          // 检查性别过滤
-          if (gender && result.gender.toLowerCase() !== gender.toLowerCase()) {
+          // 检查性别过滤（如果指定了性别）
+          if (gender && gender !== 'random' && localData.gender.toLowerCase() !== gender.toLowerCase()) {
             attempts++
             currentSeed = generateSeed()
             continue
           }
+
+          result = localData
           break
+        } catch (error) {
+          console.error(`Attempt ${attempts + 1} failed:`, error)
+          attempts++
+          currentSeed = generateSeed()
         }
-        attempts++
       }
 
       if (result) {
-        // 处理年龄范围
+        // 处理年龄范围（确保在指定范围内）
         let targetBirthYear = null
         if (minAge > 0 && maxAge > 0) {
           targetBirthYear = generateAge(minAge, maxAge)
@@ -475,40 +488,65 @@ export default function HomePage() {
         const universityStateToUse = universityState || result.state
 
         if (universityStateToUse) {
-          try {
-            const universityParams = new URLSearchParams()
-            universityParams.append("select", "name,ipedsid,zip,website,address,city,state,telephone,type")
+          // 使用备用模拟数据（外部API不可用）
+          // 由于 public.opendatasoft.com 的 us-colleges-and-universities 数据集不存在，
+          // 直接使用高质量的模拟大学数据
+          const fallbackUniversities = [
+            { name: "University of California", city: "Los Angeles", state: "CA", type: "Public University" },
+            { name: "Harvard University", city: "Cambridge", state: "MA", type: "Private University" },
+            { name: "Stanford University", city: "Stanford", state: "CA", type: "Private University" },
+            { name: "MIT", city: "Cambridge", state: "MA", type: "Private University" },
+            { name: "Yale University", city: "New Haven", state: "CT", type: "Private University" },
+            { name: "Columbia University", city: "New York", state: "NY", type: "Private University" },
+            { name: "Princeton University", city: "Princeton", state: "NJ", type: "Private University" },
+            { name: "University of Texas", city: "Austin", state: "TX", type: "Public University" },
+            { name: "University of Washington", city: "Seattle", state: "WA", type: "Public University" },
+            { name: "University of Michigan", city: "Ann Arbor", state: "MI", type: "Public University" },
+            { name: "Cornell University", city: "Ithaca", state: "NY", type: "Private University" },
+            { name: "University of Pennsylvania", city: "Philadelphia", state: "PA", type: "Private University" },
+            { name: "Johns Hopkins University", city: "Baltimore", state: "MD", type: "Private University" },
+            { name: "University of Chicago", city: "Chicago", state: "IL", type: "Private University" },
+            { name: "Duke University", city: "Durham", state: "NC", type: "Private University" },
+            { name: "Northwestern University", city: "Evanston", state: "IL", type: "Private University" },
+            { name: "University of Southern California", city: "Los Angeles", state: "CA", type: "Private University" },
+            { name: "University of Virginia", city: "Charlottesville", state: "VA", type: "Public University" },
+            { name: "Georgia Institute of Technology", city: "Atlanta", state: "GA", type: "Public University" },
+            { name: "University of Wisconsin", city: "Madison", state: "WI", type: "Public University" },
+            { name: "Carnegie Mellon University", city: "Pittsburgh", state: "PA", type: "Private University" },
+            { name: "University of Illinois", city: "Urbana", state: "IL", type: "Public University" },
+            { name: "Rice University", city: "Houston", state: "TX", type: "Private University" },
+            { name: "Vanderbilt University", city: "Nashville", state: "TN", type: "Private University" },
+            { name: "University of Miami", city: "Miami", state: "FL", type: "Private University" }
+          ]
 
-            let whereClause = `state="${universityStateToUse}" AND type="1"`
-            if (universityCity) {
-              whereClause += ` AND city="${universityCity.toUpperCase()}"`
-            }
+          // 根据州筛选大学
+          let universitiesInState = fallbackUniversities.filter(u => u.state === universityStateToUse)
 
-            universityParams.append("where", whereClause)
-            universityParams.append("order_by", `random(${currentSeed})`)
-            universityParams.append("limit", "1")
-
-            const universityResponse = await fetch(
-              `https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/us-colleges-and-universities/records?${universityParams.toString()}`,
+          // 如果指定了城市，进一步筛选
+          if (universityCity) {
+            universitiesInState = universitiesInState.filter(u =>
+              u.city.toLowerCase().includes(universityCity.toLowerCase())
             )
-            const universityApiData = await universityResponse.json()
+          }
 
-            if (universityApiData.results && universityApiData.results.length > 0) {
-              const university = universityApiData.results[0]
-              universityResult = {
-                name: university.name || "",
-                ipedsid: university.ipedsid || "",
-                zip: university.zip || "",
-                website: university.website || "",
-                address: university.address || "",
-                city: university.city || "",
-                state: university.state || "",
-                telephone: university.telephone || "",
-                type: university.type || "",
-              }
-            }
-          } catch (error) {
-            console.error("Failed to fetch university data:", error)
+          // 如果该州没有大学，使用全美随机大学
+          let selectedUniversity
+          if (universitiesInState.length > 0) {
+            selectedUniversity = faker.helpers.arrayElement(universitiesInState)
+          } else {
+            selectedUniversity = faker.helpers.arrayElement(fallbackUniversities)
+          }
+
+          universityResult = {
+            name: selectedUniversity.name,
+            ipedsid: faker.string.numeric(6),
+            zip: faker.location.zipCode(),
+            website: `https://www.${selectedUniversity.name.toLowerCase().replace(/[^a-z]/g, '').replace(/\s+/g, '')}.edu`,
+            address: `${faker.location.streetAddress()}`,
+            city: selectedUniversity.city,
+            state: selectedUniversity.state,
+            telephone: `${faker.number.int({ min: 2, max: 9 })}${faker.string.numeric(2)}-${faker.number.int({ min: 2, max: 9 })}${faker.string.numeric(2)}-${faker.string.numeric(4)}`,
+            type: selectedUniversity.type === "Public University" ? "1" : "2",
           }
         }
 
@@ -598,7 +636,7 @@ export default function HomePage() {
           schoolValue = schoolData.telephone
           break
         case "schoolGrades":
-          schoolValue = `${schoolData.st_grade}-${schoolData.end_grade}年级`
+          schoolValue = `Grade ${schoolData.st_grade} - ${schoolData.end_grade}`
           break
       }
 
@@ -666,9 +704,9 @@ export default function HomePage() {
           break
         case "universityType":
           const typeMap: Record<string, string> = {
-            "1": "公立大学",
-            "2": "私立非营利大学",
-            "3": "私立营利大学",
+            "1": "Public University",
+            "2": "Private Non-profit",
+            "3": "Private For-profit",
           }
           universityValue = typeMap[universityData.type] || universityData.type
           break
@@ -777,47 +815,49 @@ export default function HomePage() {
           <p className="text-lg text-gray-600 mb-6">生成真实的美国地址和个人信息数据</p>
 
           <div className="flex flex-wrap justify-center gap-4 mb-6">
-            <Badge variant="outline" className="text-sm">
-              随机种子: {seed}
-            </Badge>
+            {isClient && (
+              <Badge variant="outline" className="text-sm">
+                Random Seed: {seed}
+              </Badge>
+            )}
             {state && (
               <Badge variant="secondary" className="text-sm">
-                州: {getStateDisplayName(state)}
+                State: {getStateDisplayName(state)}
               </Badge>
             )}
             {city && (
               <Badge variant="secondary" className="text-sm">
-                城市: {city}
+                City: {city}
               </Badge>
             )}
             {gender && (
               <Badge variant="secondary" className="text-sm">
-                性别: {gender === "Male" ? "男" : "女"}
+                Gender: {gender}
               </Badge>
             )}
             {minAge > 0 && maxAge > 0 && (
               <Badge variant="secondary" className="text-sm">
-                年龄: {minAge}-{maxAge}岁 ({currentYear - maxAge}-{currentYear - minAge}年出生)
+                Age: {minAge}-{maxAge} years ({currentYear - maxAge}-{currentYear - minAge} birth year)
               </Badge>
             )}
             {highState && (
               <Badge variant="secondary" className="text-sm">
-                高中州: {getStateDisplayName(highState)}
+                High School State: {getStateDisplayName(highState)}
               </Badge>
             )}
             {highCity && (
               <Badge variant="secondary" className="text-sm">
-                高中城市: {highCity}
+                High School City: {highCity}
               </Badge>
             )}
             {universityState && (
               <Badge variant="secondary" className="text-sm">
-                大学州: {getStateDisplayName(universityState)}
+                University State: {getStateDisplayName(universityState)}
               </Badge>
             )}
             {universityCity && (
               <Badge variant="secondary" className="text-sm">
-                大学城市: {universityCity}
+                University City: {universityCity}
               </Badge>
             )}
           </div>
